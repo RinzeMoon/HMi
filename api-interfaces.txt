@@ -1,0 +1,505 @@
+============================================
+   iPhoneShower 项目接口文档
+============================================
+
+项目架构:
+  浏览器 → WebSocket → Node.js服务器 → HTTP流 → Qt/ffplay
+
+============================================
+   一、WebSocket 接口
+============================================
+
+1. 连接建立
+  - URL: ws://localhost:3000
+  - 协议: WebSocket
+
+2. 消息格式 (JSON)
+  - 所有消息都是JSON格式
+  - 必须包含 type 字段
+
+3. 服务器 → 客户端 消息
+
+  3.1 joined (加入成功)
+    {
+      "type": "joined",
+      "clientId": "客户端唯一ID"
+    }
+
+4. 客户端 → 服务器 消息
+
+  4.1 join (加入)
+    {
+      "type": "join"
+    }
+
+  4.2 stream_start (开始传输)
+    {
+      "type": "stream_start"
+    }
+
+  4.3 h264_data (H.264数据)
+    {
+      "type": "h264_data",
+      "data": "base64编码的H.264数据",
+      "timestamp": 时间戳(微秒),
+      "duration": 持续时间(微秒),
+      "isKeyFrame": true/false
+    }
+
+============================================
+   二、HTTP 接口
+============================================
+
+1. 主页
+  - URL: http://localhost:3000/
+  - 方法: GET
+  - 返回: index.html
+
+
+3. H.264 MPEG-TS视频流
+  - URL: http://localhost:3000/stream-h264.ts
+  - 方法: GET
+  - 格式: video/mp2t (MPEG-TS)
+  - 编码: H.264
+  - 帧率: 15 fps
+  - 分辨率: 640x480 (默认)
+  - 说明: 推荐使用，低延迟
+
+  ffplay测试命令:
+    ffplay -fflags nobuffer -flags low_delay -framedrop -probesize 32 -analyzeduration 0 -fflags discardcorrupt -f mpegts -i http://localhost:3000/stream-h264.ts
+
+  ffplay参数说明:
+    -fflags nobuffer: 不缓冲
+    -flags low_delay: 低延迟模式
+    -framedrop: 丢帧
+    -probesize 32: 最小探测
+    -analyzeduration 0: 不分析
+    -fflags discardcorrupt: 丢弃损坏包
+
+============================================
+   三、UDP 接口 (可选，旧方案)
+============================================
+
+1. 视频端口
+  - 地址: 127.0.0.1:5004
+  - 协议: UDP
+  - 格式: RTP包
+  - 编码: H.264 (旧方案) 或 JPEG (旧方案)
+
+2. 音频端口
+  - 地址: 127.0.0.1:5005
+  - 协议: UDP
+  - 格式: RTP包
+  - 编码: Opus (旧方案) 或 PCM (旧方案)
+
+============================================
+   四、H.264数据格式
+============================================
+
+1. 浏览器端编码
+  - API: WebCodecs VideoEncoder
+  - 编码器: avc1.64001F (H.264 High Level 3.1)
+  - 格式: Annex-B
+  - 关键帧间隔: 15帧 (1秒@15fps)
+  - 延迟模式: realtime
+
+2. 数据传输
+  - 编码: Base64
+  - 包装: WebSocket JSON消息
+  - 类型: h264_data
+
+3. 服务器端处理
+  - 接收: WebSocket消息
+  - 解码: Base64 → H.264裸流
+  - 封装: FFmpeg → MPEG-TS
+  - 输出: HTTP流
+
+============================================
+   五、当前使用的方案
+============================================
+
+推荐方案:
+  浏览器(WebCodecs H.264) 
+    ↓ WebSocket (h264_data)
+  Node.js服务器
+    ↓ FFmpeg封装
+  HTTP流 (MPEG-TS)
+    ↓
+  Qt/ffplay
+
+优势:
+  ✅ 延迟低 (200-300ms)
+  ✅ 带宽省 (H.264编码)
+  ✅ 标准格式 (MPEG-TS)
+  ✅ 兼容性好
+
+
+============================================
+   六、测试步骤
+============================================
+
+1. 启动服务器
+   npm start
+
+2. 打开浏览器
+   http://localhost:3000
+
+3. 点击"发起通话"
+   允许摄像头权限
+
+4. 测试H.264流
+   ffplay -fflags nobuffer -flags low_delay -framedrop -probesize 32 -analyzeduration 0 -fflags discardcorrupt -f mpegts -i http://localhost:3000/stream-h264.ts
+
+============================================
+   七、浏览器控制台日志
+============================================
+
+正常输出:
+  [WebSocket] 连接成功
+  [WebSocket] 收到消息: joined
+  [WebSocket] 已加入
+  [H.264] 编码器已配置: { ... }
+  [H.264] 开始采集视频: 640 x 480 @ 15 fps
+  [H.264] 发送 15 帧/秒
+
+============================================
+   八、服务器控制台日志
+============================================
+
+正常输出:
+  [WebSocket] 新客户端连接
+  [WebSocket] 收到: join
+  [WebSocket] 收到: h264_data
+  [WebSocket] 收到: h264_data
+  ...
+  [H.264] 新H.264流客户端连接
+  [Muxer] 启动 FFmpeg MPEG-TS 封装器...
+
+============================================
+   九、文件结构
+============================================
+
+项目根目录:
+  server.js              # 主服务器 (端口3000)
+  package.json           # 项目配置
+  public/
+    index.html           # 主页
+    app.js               # 主JavaScript (H.264方案)
+    app-h264.js          # H.264 JavaScript (源文件)
+    style.css            # 样式
+  api-interfaces.txt     # 本文档
+
+============================================
+   十、依赖
+============================================
+
+Node.js依赖:
+  - express
+  - ws
+
+浏览器API:
+  - WebSocket
+  - WebCodecs (VideoEncoder)
+  - MediaDevices
+  - Canvas API
+
+外部工具:
+  - FFmpeg (用于MPEG-TS封装)
+
+============================================
+   十一、性能参数
+============================================
+
+视频参数:
+  - 编码: H.264
+  - 分辨率: 640x480 (默认)
+  - 帧率: 15 fps
+  - 关键帧: 每15帧
+  - 等级: High Level 3.1
+
+延迟:
+  - 浏览器编码: ~50ms
+  - 网络传输: ~50ms
+  - 服务器封装: ~50ms
+  - 总延迟: ~200-300ms
+
+============================================
+   十二、故障排除
+============================================
+
+问题1: ffplay播放慢，vq不断上涨
+  解决方案: 已优化，降低到15fps
+
+问题2: 浏览器报"Cannot read properties of null"
+  解决方案: 检查index.html中的元素ID
+
+问题3: 编码器错误"exceeds maximum coded area"
+  解决方案: 已修复，自动降为640x480
+
+问题4: WebSocket 404
+  解决方案: 确认服务器运行在3000端口
+
+============================================
+   十三、Qt客户端对接指南
+============================================
+
+1. 概述
+  - Qt端使用: QtNetwork + FFmpeg
+  - 接收流: HTTP MPEG-TS (H.264)
+  - 视频输出: QOpenGLWidget
+  - 音频输出: QAudioOutput
+
+2. Qt模块依赖
+  - Qt Network (QT += network)
+  - Qt Widgets (QT += widgets)
+  - Qt Multimedia (QT += multimedia)
+  - FFmpeg (libavcodec, libavformat, libavutil, libswscale)
+
+3. FFmpeg解码流程
+  3.1 初始化FFmpeg
+    - av_register_all()
+    - avformat_network_init()
+
+  3.2 打开HTTP流
+    - AVFormatContext *fmt_ctx = NULL;
+    - avformat_open_input(&fmt_ctx, "http://localhost:3000/stream-h264.ts", NULL, NULL);
+    - avformat_find_stream_info(fmt_ctx, NULL);
+
+  3.3 查找视频流
+    - 遍历streams找到AVMEDIA_TYPE_VIDEO
+    - 找到video_stream_index
+
+  3.4 初始化解码器
+    - AVCodec *codec = avcodec_find_decoder(stream->codecpar->codec_id);
+    - AVCodecContext *codec_ctx = avcodec_alloc_context3(codec);
+    - avcodec_parameters_to_context(codec_ctx, stream->codecpar);
+    - avcodec_open2(codec_ctx, codec, NULL);
+
+  3.5 低延迟配置 (关键!)
+    - codec_ctx->thread_count = 1;
+    - codec_ctx->flags2 |= AV_CODEC_FLAG2_LOW_DELAY;
+    - codec_ctx->skip_frame = AVDISCARD_NONREF;
+    - codec_ctx->skip_loop_filter = AVDISCARD_ALL;
+
+  3.6 读取和解码
+    - AVPacket *pkt = av_packet_alloc();
+    - while (av_read_frame(fmt_ctx, pkt) >= 0) {
+        if (pkt->stream_index == video_stream_index) {
+          avcodec_send_packet(codec_ctx, pkt);
+          AVFrame *frame = av_frame_alloc();
+          while (avcodec_receive_frame(codec_ctx, frame) == 0) {
+            // 处理解码后的帧
+          }
+          av_frame_free(&frame);
+        }
+        av_packet_unref(pkt);
+      }
+
+  3.7 清理
+    - av_packet_free(&pkt);
+    - avcodec_free_context(&codec_ctx);
+    - avformat_close_input(&fmt_ctx);
+
+4. QtNetwork HTTP接收
+  4.1 使用QNetworkAccessManager
+    QNetworkAccessManager *manager = new QNetworkAccessManager(this);
+    QNetworkRequest request(QUrl("http://localhost:3000/stream-h264.ts"));
+    request.setRawHeader("Cache-Control", "no-cache");
+    request.setRawHeader("Connection", "keep-alive");
+
+  4.2 接收流式数据
+    QNetworkReply *reply = manager->get(request);
+    connect(reply, &QNetworkReply::readyRead, [=]() {
+        QByteArray data = reply->readAll();
+        // 将数据传给FFmpeg
+        // 可以用AVIOContext自定义读取
+    });
+
+  4.3 自定义FFmpeg IO (推荐)
+    // 创建自定义AVIOContext
+    unsigned char *buffer = (unsigned char*)av_malloc(4096);
+    AVIOContext *avio = avio_alloc_context(buffer, 4096, 0, this, 
+        read_packet, NULL, NULL);
+    fmt_ctx->pb = avio;
+
+    // read_packet回调从Qt缓冲区读取数据
+
+5. QOpenGLWidget视频渲染
+  5.1 继承QOpenGLWidget
+    class VideoWidget : public QOpenGLWidget, 
+                       protected QOpenGLFunctions { ... };
+
+  5.2 初始化纹理
+    initializeOpenGLFunctions();
+    glGenTextures(1, &m_texture);
+    glBindTexture(GL_TEXTURE_2D, m_texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+  5.3 格式转换 (YUV420P → RGB)
+    SwsContext *sws_ctx = sws_getContext(
+        codec_ctx->width, codec_ctx->height, codec_ctx->pix_fmt,
+        codec_ctx->width, codec_ctx->height, AV_PIX_FMT_RGB24,
+        SWS_BILINEAR, NULL, NULL, NULL);
+    
+    uint8_t *rgb_data[4];
+    int rgb_linesize[4];
+    av_image_alloc(rgb_data, rgb_linesize, 
+        codec_ctx->width, codec_ctx->height, AV_PIX_FMT_RGB24, 1);
+    
+    sws_scale(sws_ctx, frame->data, frame->linesize, 0, 
+        codec_ctx->height, rgb_data, rgb_linesize);
+
+  5.4 更新纹理并渲染
+    glBindTexture(GL_TEXTURE_2D, m_texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 
+        codec_ctx->width, codec_ctx->height, 0, 
+        GL_RGB, GL_UNSIGNED_BYTE, rgb_data[0]);
+    update(); // 触发paintGL
+
+  5.5 paintGL绘制
+    glClear(GL_COLOR_BUFFER_BIT);
+    glBindTexture(GL_TEXTURE_2D, m_texture);
+    glEnable(GL_TEXTURE_2D);
+    
+    // 绘制纹理到四边形
+    glBegin(GL_QUADS);
+    glTexCoord2f(0, 0); glVertex2f(-1, -1);
+    glTexCoord2f(1, 0); glVertex2f( 1, -1);
+    glTexCoord2f(1, 1); glVertex2f( 1,  1);
+    glTexCoord2f(0, 1); glVertex2f(-1,  1);
+    glEnd();
+
+6. QAudioOutput音频播放
+  6.1 音频格式
+    - 如果有音频流，类似视频处理
+    - 解码后PCM数据
+    - 使用QAudioOutput播放
+
+  6.2 示例代码
+    QAudioFormat format;
+    format.setSampleRate(48000);
+    format.setChannelCount(2);
+    format.setSampleSize(16);
+    format.setCodec("audio/pcm");
+    format.setByteOrder(QAudioFormat::LittleEndian);
+    format.setSampleType(QAudioFormat::SignedInt);
+    
+    QAudioOutput *audio = new QAudioOutput(format, this);
+    QIODevice *audioDevice = audio->start();
+    // 写入PCM数据: audioDevice->write(pcmData, size);
+
+7. 完整的FFmpeg参数 (Qt端)
+  7.1 AVFormatContext选项
+    AVDictionary *options = NULL;
+    av_dict_set(&options, "fflags", "nobuffer", 0);
+    av_dict_set(&options, "flags", "low_delay", 0);
+    av_dict_set(&options, "probesize", "32", 0);
+    av_dict_set(&options, "analyzeduration", "0", 0);
+    av_dict_set(&options, "sync", "ext", 0);
+    avformat_open_input(&fmt_ctx, url, NULL, &options);
+
+  7.2 FFplay参数参考
+    -fflags nobuffer
+    -flags low_delay
+    -framedrop
+    -probesize 32
+    -analyzeduration 0
+    -fflags discardcorrupt
+    -sync ext
+
+8. 多线程架构建议
+  8.1 线程分离
+    - 网络线程: QtNetwork接收数据
+    - 解码线程: FFmpeg解码
+    - 渲染线程: QOpenGLWidget渲染
+
+  8.2 线程通信
+    - 使用队列传递数据
+    - QMutex + QWaitCondition
+    - 或无锁队列(ring buffer)
+
+  8.3 示例队列
+    template<typename T>
+    class FrameQueue {
+    public:
+        void push(T frame);
+        T pop();
+        bool empty();
+    private:
+        QQueue<T> queue;
+        QMutex mutex;
+        QWaitCondition cond;
+    };
+
+9. 错误处理和重连
+  9.1 网络错误
+    - 监听QNetworkReply::error
+    - 自动重连机制
+    - 指数退避重连策略
+
+  9.2 解码错误
+    - 跳过损坏帧
+    - 等待关键帧
+    - 重置解码器
+
+  9.3 超时检测
+    - 如果3秒无数据，触发重连
+
+10. 性能优化
+  10.1 零拷贝
+    - 尽量避免数据拷贝
+    - 直接使用FFmpeg帧数据
+
+  10.2 帧缓存
+    - 缓存1-2帧用于平滑
+    - 不要缓存太多(防止延迟)
+
+  10.3 GPU加速
+    - 如支持，使用VAAPI/VDPAU/NVDEC
+    - QOpenGLWidget使用GPU渲染
+
+11. Qt .pro文件示例
+  QT += core gui widgets network multimedia
+  TARGET = QtVideoClient
+  TEMPLATE = app
+  
+  # FFmpeg
+  INCLUDEPATH += /path/to/ffmpeg/include
+  LIBS += -L/path/to/ffmpeg/lib \
+          -lavcodec -lavformat -lavutil -lswscale
+  
+  SOURCES += main.cpp \
+             mainwindow.cpp \
+             videowidget.cpp \
+             streamdecoder.cpp
+  
+  HEADERS += mainwindow.h \
+             videowidget.h \
+             streamdecoder.h
+
+12. 快速测试 (用ffplay验证)
+  在开发Qt前，先用ffplay确认流正常:
+    ffplay -fflags nobuffer+discardcorrupt -flags low_delay \
+           -framedrop -probesize 32 -analyzeduration 0 \
+           -sync ext -f mpegts -i http://localhost:3000/stream-h264.ts
+
+============================================
+   十四、更新日志
+============================================
+
+2026-04-13
+  - 实现WebCodecs浏览器H.264编码
+  - 优化帧率到15fps
+  - 优化FFmpeg参数
+  - 优化HTTP响应头
+  - 解决vq上涨问题
+  - 添加SPS/PPS插入
+  - 添加Qt客户端详细对接指南
+  - 最终方案完成
+
+============================================
+   文档结束
+============================================

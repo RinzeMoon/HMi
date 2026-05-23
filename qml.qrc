@@ -1,0 +1,39 @@
+<!DOCTYPE RCC><RCC version="1.0">
+    <qresource prefix="/">
+        <file>QML/MAIN/main.qml</file>
+        <file>QML/HMIBackground/HMIBackground.qml</file>
+        <file>QML/StatusBar/StatusBar.qml</file>
+        <file>QML/Sidebar/Sidebar.qml</file>
+        <file>QML/DashboardPanel/DashboardPanel.qml</file>
+        <file>QML/MapPanel/MapPanel.qml</file>
+        <file>QML/MapPanel/map.html</file>
+        <file>QML/CarPanel/CarPanel.qml</file>
+        <file>QML/ProgressBar/ProgressBar.qml</file>
+        <file>QML/SpeedGauge/SpeedGauge.qml</file>
+        <file>QML/BottomControls/BottomControls.qml</file>
+        <file>QML/MusicPanel/MusicPanel.qml</file>
+        <file>QML/Car3DPanel/Car3DPanel.qml</file>
+        <file>QML/AIPanel/AIPanel.qml</file>
+        <file>QML/AIPanel/SceneEngineTest.qml</file>
+        <file>QML/VideoCallPanel/VideoCallWindow.qml</file>
+
+
+        <file>QML/fonts/fa-brands-400.ttf</file>
+        <file>QML/fonts/fa-regular-400.ttf</file>
+        <file>QML/fonts/fa-solid-900.ttf</file>
+        <file>QML/fonts/fa-v4compatibility.ttf</file>
+
+        <file>free_porsche_911_carrera_4s/scene.gltf</file>
+        <file>free_porsche_911_carrera_4s/scene.bin</file>
+        <file>free_porsche_911_carrera_4s/textures/Material_baseColor.png</file>
+        <file>free_porsche_911_carrera_4s/textures/Material_metallicRoughness.png</file>
+        <file>free_porsche_911_carrera_4s/textures/license_baseColor.png</file>
+        <file>free_porsche_911_carrera_4s/textures/license_normal.png</file>
+        <file>free_porsche_911_carrera_4s/textures/logo_baseColor.png</file>
+        <file>free_porsche_911_carrera_4s/textures/paint_metallicRoughness.png</file>
+        <file>free_porsche_911_carrera_4s/textures/rubber_metallicRoughness.png</file>
+        <file>free_porsche_911_carrera_4s/textures/rubber_normal.png</file>
+        <file>free_porsche_911_carrera_4s/textures/tex_shiny_baseColor.png</file>
+        <file>free_porsche_911_carrera_4s/textures/tex_shiny_emissive.png</file>
+    </qresource>
+</RCC>

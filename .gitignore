@@ -1,0 +1,45 @@
+# ── Build ──
+build/
+cmake-build-debug-visual-studio/
+*_autogen/
+*.obj
+*.o
+*.moc
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+
+# ── IDE ──
+CMakeLists.txt.user
+*.pro.user
+.vs/
+.idea/
+*.swp
+*.swo
+
+# ── Binaries ──
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.lib
+*.exp
+lib/
+
+# ── Runtime data ──
+*.db
+agent_prefs.ini
+
+# ── Config (contains API keys) ──
+config.ini
+
+# ── Temp / test files ──
+call.html
+route_planning_test.html
+
+# ── Third-party deps ──
+assimp-master/
+
+# ── OS ──
+.DS_Store
+Thumbs.db

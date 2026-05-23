@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no, width=device-width">
+    <title>高德地图导航</title>
+    <style type="text/css">
+        html, body, #container {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        #panel {
+            position: fixed;
+            background-color: white;
+            max-height: 90%;
+            overflow-y: auto;
+            top: 10px;
+            right: 10px;
+            width: 280px;
+            z-index: 100;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            border-radius: 4px;
+        }
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 16px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">正在加载地图...</div>
+    <div id="container"></div>
+    <div id="panel"></div>
+
+    <script type="text/javascript">
+        var map = null;
+        var driving = null;
+        
+        window.qmlBridge = {
+            init: function(apiKey, securityKey) {
+                console.log('[Map] init called with key:', apiKey ? apiKey.substring(0, 8) + '...' : 'NONE');
+                console.log('[Map] Security key:', securityKey ? securityKey.substring(0, 8) + '...' : 'NONE');
+                
+                if (!apiKey) {
+                    console.error('[Map] No API Key provided!');
+                    return;
+                }
+                
+                if (securityKey) {
+                    console.log('[Map] Setting security config');
+                    window._AMapSecurityConfig = {
+                        securityJsCode: securityKey
+                    };
+                }
+                
+                var script = document.createElement('script');
+                script.type = 'text/javascript';
+                script.src = 'https://webapi.amap.com/maps?v=2.0&key=' + apiKey + '&plugin=AMap.Driving';
+                script.onload = function() {
+                    console.log('[Map] AMap script loaded');
+                    initMap();
+                };
+                script.onerror = function() {
+                    console.error('[Map] Failed to load AMap script');
+                    var loading = document.getElementById('loading');
+                    if (loading) loading.textContent = '地图加载失败';
+                };
+                document.head.appendChild(script);
+            },
+            
+            setCenter: function(lng, lat, zoom) {
+                console.log('[Map] setCenter called:', lng, lat, zoom);
+                if (!map) return;
+                try {
+                    map.setCenter([lng, lat]);
+                    if (zoom) {
+                        map.setZoom(zoom);
+                    }
+                    console.log('[Map] Center set to:', lng, lat);
+                } catch(e) {
+                    console.error('[Map] Error setting center:', e);
+                }
+            },
+            
+            showRoute: function(startLoc, endLoc, polylineStr) {
+                console.log('[Map] showRoute called');
+                if (!map || !driving) return;
+                
+                try {
+                    var s = startLoc.split(',');
+                    var e = endLoc.split(',');
+                    var start = [parseFloat(s[0]), parseFloat(s[1])];
+                    var end = [parseFloat(e[0]), parseFloat(e[1])];
+                    
+                    console.log('[Map] Start:', start, 'End:', end);
+                    
+                    driving.search(new AMap.LngLat(start[0], start[1]), 
+                                   new AMap.LngLat(end[0], end[1]), 
+                                   function(status, result) {
+                        if (status === 'complete' && result.route && result.route.paths) {
+                            console.log('[Map] Route search complete,', result.route.paths.length, 'paths found');
+                        } else {
+                            console.error('[Map] Route search failed:', result);
+                        }
+                    });
+                } catch(e) {
+                    console.error('[Map] Error:', e);
+                }
+            }
+        };
+        
+        function initMap() {
+            console.log('[Map] Initializing map...');
+            var loading = document.getElementById('loading');
+            if (loading) loading.style.display = 'none';
+            
+            map = new AMap.Map('container', {
+                resizeEnable: true,
+                center: [116.397428, 39.90923],
+                zoom: 13
+            });
+            
+            driving = new AMap.Driving({
+                map: map,
+                panel: "panel",
+                hideMarkers: false
+            });
+            
+            console.log('[Map] Map ready!');
+            
+            if (window.qmlBridgeReady) {
+                window.qmlBridgeReady();
+            }
+        }
+    </script>
+</body>
+</html>
