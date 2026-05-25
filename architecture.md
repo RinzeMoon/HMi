@@ -3,255 +3,124 @@
 ## 整体架构
 
 ```mermaid
-graph TB
-    subgraph UI["QML UI Layer"]
-        Dashboard["仪表盘 Dashboard"]
-        Map["地图导航 MapPanel"]
-        Music["音乐面板 MusicPanel"]
-        AI["AI 对话 AIPanel"]
-        Car3D["3D 车模 Car3DPanel"]
-        Video["视频通话 VideoCallPanel"]
-        Bottom["底部控制 BottomControls"]
+graph TD
+    subgraph UI["QML UI"]
+        AI["AIPanel"] --> AL["AgentLoop"]
+        DB["Dashboard"] & MP["MapPanel"] & BC["BottomControls"] & VD["VideoCall"]
     end
 
-    subgraph Agent["Agent Core"]
-        AgentLoop["AgentLoop<br/>ReAct 循环引擎"]
-        ToolRegistry["ToolRegistry<br/>插件注册表"]
-        ToolExecutor["ToolExecutor<br/>插件执行器"]
-        MemoryManager["MemoryManager<br/>分层记忆"]
+    subgraph Core["Agent Core"]
+        AL --> TR["ToolRegistry"] --> TE["ToolExecutor"]
+        AL --> LS["LLMService"] & MM["MemoryManager"]
     end
 
-    subgraph LLM["LLM Service"]
-        LLMService["LLMService<br/>SSE 流式推理"]
+    subgraph Plugins["Plugins"]
+        TE --> T1["Time"] & T2["Weather"] & T3["Music"] & T4["Climate"] & T5["Nav"]
     end
 
-    subgraph Tools["Tools (插件)"]
-        TimeTool["TimeTool"]
-        WeatherTool["WeatherTool"]
-        MusicTool["MusicTool"]
-        ClimateTool["ClimateTool"]
-        NavTool["NavigationTool"]
+    subgraph Svc["Services"]
+        T2 --> WS["WeatherService"] --> OWM["OpenWeatherMap"]
+        T3 --> MS["MusicService"] --> NCM["NeteaseAPI"]
+        T5 --> NS["MapService"] --> GD["GaodeAPI"]
+        LS --> NM["NetworkManager"] --> DS["DeepSeek API"]
+        T1 --> CR["ConfigReader"]
+        T4 --> BC
     end
 
-    subgraph Services["Backend Services"]
-        DataBus["DataBus<br/>UDP 数据总线"]
-        MusicSvc["MusicService<br/>网易云 API"]
-        MapSvc["MapService<br/>高德地图 API"]
-        WeatherSvc["WeatherService<br/>OpenWeatherMap"]
-        LocationSvc["LocationService<br/>GPS 定位"]
-        AudioSvc["AudioService<br/>Whisper 语音识别"]
-        VideoSvc["VideoCallService<br/>WebSocket + FFmpeg"]
-        NetworkMgr["NetworkManager<br/>HTTP 封装"]
-        ConfigReader["ConfigReader<br/>INI 配置"]
+    subgraph Bus["DataBus :12345"]
+        DBus["DataBus"] -->|UDP| ST["SimTool"]
+        DBus -.->|reserved| CAN["CAN Adapter"]
+        DBus --> DB & BC & AL
     end
 
-    subgraph External["External"]
-        DeepSeek["DeepSeek API"]
-        SimTool["SimTool<br/>车辆物理模拟器"]
-        CAN["CAN Adapter<br/>(预留)"]
-        NeteaseAPI["NeteaseCloudMusicApi"]
-        GaodeAPI["高德地图 API"]
-        OWM["OpenWeatherMap"]
-    end
-
-    AI --> AgentLoop
-    AgentLoop --> LLMService
-    AgentLoop --> ToolRegistry
-    ToolRegistry --> ToolExecutor
-    ToolExecutor --> TimeTool & WeatherTool & MusicTool & ClimateTool & NavTool
-    AgentLoop --> MemoryManager
-
-    TimeTool -.-> ConfigReader
-    WeatherTool --> WeatherSvc
-    MusicTool --> MusicSvc
-    ClimateTool --> Bottom
-    NavTool --> MapSvc
-
-    LLMService --> NetworkMgr
-    NetworkMgr --> DeepSeek
-
-    DataBus -.-> Dashboard & Bottom & Map & AgentLoop
-    DataBus --> SimTool
-    DataBus -.-> CAN
-
-    MusicSvc --> NetworkMgr --> NeteaseAPI
-    MapSvc --> NetworkMgr --> GaodeAPI
-    WeatherSvc --> NetworkMgr --> OWM
-    AudioSvc --> AgentLoop
-    VideoSvc --> Video
+    ASvc["AudioService\nWhisper"] --> AL
+    VSvc["VideoCallService\nFFmpeg+WS"] --> VD
 ```
 
 ## Agent ReAct 循环
 
 ```mermaid
 sequenceDiagram
-    participant U as User
+    participant U as 用户
     participant Q as AIPanel
     participant L as AgentLoop
-    participant M as MemoryManager
     participant S as LLMService
     participant E as ToolExecutor
-    participant T as AgentTool
-    participant A as External API
+    participant A as 外部API
 
-    U->>Q: voice / text input
-    Q->>L: run(userInput)
+    U->>Q: 语音/文字输入
+    Q->>L: run()
+    activate L
+    L->>S: 发起对话(messages+tools)
+    S->>A: POST SSE 流式请求
+    A-->>S: 流式增量返回
+    S-->>L: 逐字推送
+    L-->>Q: 气泡实时更新
 
-    Note over L: ReAct loop start
-    L->>M: addMessage(user)
-    L->>S: sendMessageWithContext(messages, tools)
-    S->>A: POST DeepSeek (SSE)
-    A-->>S: streaming deltas
-    S-->>L: streamingDelta
-    L-->>Q: streamingDelta -> bubble
-
-    alt tool_calls
-        S-->>L: toolCallRequested(name, args)
-        L-->>Q: taskProgress running
-        L->>E: executeBlocking(name, args)
-        E->>T: execute(args)
-        T->>A: HTTP request
-        A-->>T: response
-        T-->>E: result
-        E-->>L: ToolResult
-        L-->>Q: taskProgress done
-        L->>M: addMessage(assistant + tool_result)
-        Note over L: loop back to startRound
-    else final answer
-        S-->>L: chatFinished
-        L-->>Q: thinkingFinished
+    alt 有工具调用
+        S-->>L: 返回 tool_calls
+        L-->>Q: 显示进度(执行中)
+        L->>E: 执行工具
+        E->>A: HTTP 请求
+        A-->>E: 响应结果
+        E-->>L: 工具结果
+        L-->>Q: 显示进度(已完成)
+        Note right of L: 循环回到推理
+    else 推理结束
+        S-->>L: 无更多工具调用
+        L-->>Q: 推理完成
     end
-
-    Q-->>U: final response + TodoList
+    deactivate L
+    Q-->>U: 最终回复 + TodoList
 ```
 
-## 数据总线 (DataBus)
+## 数据总线
 
 ```mermaid
 graph LR
-    subgraph Sources["数据源"]
-        SimTool["SimTool<br/>物理引擎<br/>F=P/v, 风阻, 滚阻<br/>20Hz UDP"]
-        CAN["CAN Adapter<br/>(预留接口)"]
-    end
-
-    subgraph Bus["DataBus :12345"]
-        Parser["JSON Parser"]
-        Props["Q_PROPERTY<br/>speed/rpm/gear/soc/range<br/>leftTemp/rightTemp/fanLevel<br/>gpsLat/gpsLng/throttle/brake"]
-    end
-
-    subgraph Consumers["消费者"]
-        Dashboard["仪表盘<br/>车速/转速指针"]
-        Bottom["空调控制<br/>温度/风扇"]
-        AgentLoop["AgentLoop<br/>setAdditionalContext()"]
-        Map["地图<br/>GPS 定位"]
-    end
-
-    SimTool -->|UDP JSON| Parser
-    CAN -.->|UDP JSON| Parser
-    Parser --> Props
-    Props -->|vehicleDataChanged| Dashboard & Bottom & AgentLoop & Map
+    ST["SimTool\n物理引擎 20Hz"] -->|UDP JSON| DBus["DataBus :12345"]
+    DBus -->|广播车辆数据| D["仪表盘"] & B["空调控制"] & AL["AgentLoop\n上下文注入"]
 ```
 
-## 工具插件体系
+## 插件体系
 
 ```mermaid
 classDiagram
-    class AgentTool {
-        &lt;&lt;abstract&gt;&gt;
-        +name() string
-        +description() string
-        +parametersSchema() json
-        +execute(args) future
-    }
+    direction LR
+    AgentTool : +name()
+    AgentTool : +description()
+    AgentTool : +schema()
+    AgentTool : +execute()
 
-    class ToolRegistry {
-        +registerTool()
-        +findTool()
-        +toOpenAISchema()
-    }
+    AgentTool &lt;|-- TimeTool : get_current_time
+    AgentTool &lt;|-- WeatherTool : get_weather
+    AgentTool &lt;|-- MusicTool : play_music
+    AgentTool &lt;|-- ClimateTool : control_ac
+    AgentTool &lt;|-- NavTool : search_nav
 
-    class ToolExecutor {
-        +executeBlocking()
-    }
-
-    class TimeTool {
-        get_current_time
-    }
-
-    class WeatherTool {
-        get_weather
-    }
-
-    class MusicTool {
-        play_music
-    }
-
-    class ClimateTool {
-        control_air_conditioner
-    }
-
-    class NavigationTool {
-        search_navigation
-    }
-
-    AgentTool &lt;|-- TimeTool
-    AgentTool &lt;|-- WeatherTool
-    AgentTool &lt;|-- MusicTool
-    AgentTool &lt;|-- ClimateTool
-    AgentTool &lt;|-- NavigationTool
     ToolRegistry o-- AgentTool
-    ToolExecutor --&gt; ToolRegistry
+    ToolExecutor --> ToolRegistry
 ```
 
-## SimTool 物理模型
+## SimTool 物理
 
 ```mermaid
-flowchart TD
-    Inputs["驾驶员输入<br/>油门 0-1, 刹车 0-1<br/>档位 P/R/N/D<br/>方向盘角度"]
+flowchart LR
+    I["油门/刹车\n档位 P/R/N/D"] --> P["物理计算 20Hz"]
+    P --> O["车速/转速\n续航/加速度"]
+    O -->|UDP JSON| DBus["DataBus"]
 
-    subgraph Physics["20Hz 物理 Tick"]
-        Drive["驱动力<br/>F = P×throttle / v<br/>(低速钳制)"]
-        Brake["制动力<br/>F = brake × m×g×1.2"]
-        Drag["风阻<br/>F = 0.5×ρ×Cd×A×v²"]
-        Roll["滚阻<br/>F = Crr×m×g"]
-        Net["净力 = Drive - Brake - Drag - Roll"]
-        Accel["加速度 = Net / m"]
-        Speed["v += a×dt"]
-        SOC["SOC -= P×dt / 3600 / kWh"]
+    subgraph P
+        direction LR
+        F["驱动力-风阻-滚阻"] --> N["加速度"] --> V["速度累加"]
     end
-
-    Outputs["输出<br/>speed, rpm, soc<br/>range, gear, accel"]
-
-    Inputs --> Physics
-    Physics --> Outputs
-    Outputs -->|UDP JSON| DataBus["DataBus :12345"]
 ```
 
 ## 目录结构
 
 ```mermaid
-graph TB
-    Root["CarHMI/"]
-    Root --> Service["Service/"]
-    Root --> QML["QML/"]
-    Root --> Network["NetworkManager/"]
-    Root --> Components["components/"]
-    Root --> SimToolDir["../SimTool/"]
-    Root --> Assets["3D Models & Fonts"]
-
-    Service --> AgentCore["AgentCore/<br/>AgentLoop, ToolRegistry<br/>ToolExecutor, MemoryManager"]
-    Service --> LLM["LLMService/"]
-    Service --> Tools["Tools/<br/>5 个内置插件"]
-    Service --> DataBusDir["DataBus/"]
-    Service --> Music["MusicService/"]
-    Service --> Map["MapService/"]
-    Service --> Weather["WeatherService/"]
-    Service --> Location["LocationService/"]
-    Service --> Audio["AudioService/"]
-    Service --> Video["VideoCallService/"]
-    Service --> Config["ConfigReader/"]
-
-    QML --> MAIN["MAIN/main.qml"]
-    QML --> Panels["AIPanel, Dashboard<br/>MapPanel, MusicPanel<br/>CarPanel, Car3DPanel<br/>VideoCallPanel<br/>BottomControls"]
-    QML --> Bars["Sidebar, StatusBar"]
-    QML --> Fonts["fonts/"]
+graph LR
+    Root["CarHMI/"] --> Svc["Service/"] & QML["QML/"] & Net["NetworkManager/"] & Cmp["components/"] & Ast["3D/fonts"]
+    Svc --> AC["AgentCore/"] & LS["LLMService/"] & TL["Tools/"] & DBus["DataBus/"] & etc["Music/Map/Weather/..."]
+    QML --> Panels["AIPanel Dashboard\nMapPanel MusicPanel\nCar3DPanel VideoCall"]
+```
